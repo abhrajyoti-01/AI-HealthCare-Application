@@ -4,23 +4,35 @@ const messageInput = document.getElementById("messageInput");
 const sendBtn = document.getElementById("sendBtn");
 const providerBadge = document.getElementById("providerBadge");
 const providerHint = document.getElementById("providerHint");
-const clearChatBtn = document.getElementById("clearChatBtn");
+const newChatBtn = document.getElementById("newChatBtn");
+const sidebarToggle = document.getElementById("sidebarToggle");
+const sidebar = document.getElementById("sidebar");
+const sidebarOverlay = document.getElementById("sidebarOverlay");
 
 let chatHistory = [];
 let typingNode = null;
 let pending = false;
 
 const initialMessage =
-    "Welcome. I can provide structured health guidance based on your symptoms. "
-    "Please describe what you are experiencing, including how long it has been going on and the severity. "
+    "Welcome. I can provide structured health guidance based on your symptoms. " +
+    "Please describe what you are experiencing, including how long it has been going on and the severity. " +
     "I will respond with a clinical impression, possible causes, red flags to watch for, and recommended next steps.";
+
+function smoothScrollToBottom() {
+    requestAnimationFrame(function () {
+        chatWindow.scrollTo({
+            top: chatWindow.scrollHeight,
+            behavior: "smooth",
+        });
+    });
+}
 
 function appendMessage(role, content) {
     const node = document.createElement("div");
-    node.className = `message ${role}`;
+    node.className = "message " + role;
     node.textContent = content;
     chatWindow.appendChild(node);
-    chatWindow.scrollTop = chatWindow.scrollHeight;
+    smoothScrollToBottom();
 }
 
 function showTyping() {
@@ -28,10 +40,16 @@ function showTyping() {
         return;
     }
     typingNode = document.createElement("div");
-    typingNode.className = "message assistant typing";
-    typingNode.textContent = "Analyzing your input...";
+    typingNode.className = "typing-indicator";
+
+    for (var i = 0; i < 3; i++) {
+        var dot = document.createElement("span");
+        dot.className = "typing-dot";
+        typingNode.appendChild(dot);
+    }
+
     chatWindow.appendChild(typingNode);
-    chatWindow.scrollTop = chatWindow.scrollHeight;
+    smoothScrollToBottom();
 }
 
 function hideTyping() {
@@ -51,24 +69,48 @@ function setPendingState(isPending) {
     }
 }
 
-function setProviderBadge(provider, isError = false) {
-    const labels = {
+function setProviderBadge(provider, isError) {
+    var labels = {
         openrouter: "AI Active",
         huggingface: "AI Active",
         safety: "Safety Override",
         fallback: "Offline Mode",
     };
     providerBadge.textContent = labels[provider] || "Connecting...";
-    providerBadge.classList.toggle("error", isError);
+    providerBadge.classList.toggle("error", !!isError);
+}
+
+function toggleSidebar() {
+    var isOpen = sidebar.classList.toggle("open");
+    sidebarToggle.classList.toggle("active", isOpen);
+    if (isOpen) {
+        sidebarOverlay.style.display = "block";
+        requestAnimationFrame(function () {
+            sidebarOverlay.classList.add("visible");
+        });
+    } else {
+        closeSidebar();
+    }
+}
+
+function closeSidebar() {
+    sidebar.classList.remove("open");
+    sidebarToggle.classList.remove("active");
+    sidebarOverlay.classList.remove("visible");
+    setTimeout(function () {
+        if (!sidebarOverlay.classList.contains("visible")) {
+            sidebarOverlay.style.display = "";
+        }
+    }, 350);
 }
 
 async function fetchStatus() {
     try {
-        const response = await fetch("/api/status");
+        var response = await fetch("/api/status");
         if (!response.ok) {
             throw new Error("Status check failed");
         }
-        const status = await response.json();
+        var status = await response.json();
         setProviderBadge(status.activeProvider || "fallback", false);
     } catch (error) {
         setProviderBadge("fallback", true);
@@ -87,34 +129,37 @@ async function sendMessage(message) {
     showTyping();
 
     try {
-        const response = await fetch("/api/chat", {
+        var response = await fetch("/api/chat", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
             },
             body: JSON.stringify({
-                message,
+                message: message,
                 history: chatHistory.slice(-12),
             }),
         });
 
-        const payload = await response.json();
+        var payload = await response.json();
         hideTyping();
 
         if (!response.ok) {
-            const errorText = payload.error || "An error occurred while processing your request. Please try again.";
+            var errorText = payload.error || "An error occurred while processing your request. Please try again.";
             appendMessage("assistant", errorText);
             chatHistory.push({ role: "assistant", content: errorText });
             return;
         }
 
-        const reply = payload.reply || "I could not generate a response. Please try again.";
+        var reply = payload.reply || "I could not generate a response. Please try again.";
         appendMessage("assistant", reply);
         chatHistory.push({ role: "assistant", content: reply });
-        setProviderBadge(payload.provider || "fallback", payload.provider === "fallback" && !!payload.reason);
+        setProviderBadge(
+            payload.provider || "fallback",
+            payload.provider === "fallback" && !!payload.reason
+        );
     } catch (error) {
         hideTyping();
-        const offlineText = "Unable to connect. Please check your connection and try again.";
+        var offlineText = "Unable to connect. Please check your connection and try again.";
         appendMessage("assistant", offlineText);
         chatHistory.push({ role: "assistant", content: offlineText });
         setProviderBadge("fallback", true);
@@ -130,11 +175,12 @@ function resetChat() {
     chatHistory.push({ role: "assistant", content: initialMessage });
     messageInput.value = "";
     messageInput.focus();
+    closeSidebar();
 }
 
-chatForm.addEventListener("submit", async (event) => {
+chatForm.addEventListener("submit", async function (event) {
     event.preventDefault();
-    const message = messageInput.value.trim();
+    var message = messageInput.value.trim();
     if (!message) {
         return;
     }
@@ -142,8 +188,16 @@ chatForm.addEventListener("submit", async (event) => {
     await sendMessage(message);
 });
 
-clearChatBtn.addEventListener("click", () => {
+newChatBtn.addEventListener("click", function () {
     resetChat();
+});
+
+sidebarToggle.addEventListener("click", function () {
+    toggleSidebar();
+});
+
+sidebarOverlay.addEventListener("click", function () {
+    closeSidebar();
 });
 
 resetChat();
